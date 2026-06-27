@@ -5,6 +5,7 @@ from sqlmodel import Session, select
 from typing import List
 import hashlib
 import time
+import os
 
 from .database import get_session, init_db
 from .models import User, UserCreate, UserRead, Token, TokenData, Channel
@@ -13,10 +14,10 @@ from jose import JWTError, jwt
 
 app = FastAPI(title="WalkieTalkie Backend")
 
-# CORS Configuration for Flutter Web & Mobile
+# CORS Configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # In production, replace with your specific domains
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -27,6 +28,10 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 @app.on_event("startup")
 def on_startup():
     init_db()
+
+@app.get("/")
+def read_root():
+    return {"status": "online", "message": "WalkieTalkie API is running"}
 
 async def get_current_user(token: str = Depends(oauth2_scheme), session: Session = Depends(get_session)):
     credentials_exception = HTTPException(
@@ -63,7 +68,7 @@ def register(user_in: UserCreate, session: Session = Depends(get_session)):
         phone=user_in.phone,
         legal_name=user_in.legal_name,
         password_hash=hashed_pw,
-        is_approved=False, # Manual approval required
+        is_approved=False,
         is_admin=False
     )
     session.add(new_user)
@@ -82,7 +87,6 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), session: Session = D
     access_token = create_access_token(data={"sub": user.phone})
     return {"access_token": access_token, "token_type": "bearer"}
 
-# Admin Endpoints
 @app.get("/admin/pending-users", response_model=List[UserRead])
 def get_pending_users(admin: User = Depends(get_current_admin), session: Session = Depends(get_session)):
     users = session.exec(select(User).where(User.is_approved == False)).all()
@@ -107,17 +111,12 @@ def reject_user(user_id: int, admin: User = Depends(get_current_admin), session:
     session.commit()
     return {"status": "deleted"}
 
-# TURN Credentials Helper (Simulated Coturn REST API authentication)
 @app.get("/turn-credentials")
 def get_turn_credentials(current_user: User = Depends(get_current_user)):
-    # COTURN secret mechanism: user:timestamp and hmac-sha1(secret, user:timestamp)
-    import os
     secret = os.getenv("COTURN_SECRET", "my-coturn-shared-secret")
-    ttl = 3600 * 24 # 24 hours
+    ttl = 3600 * 24 
     timestamp = int(time.time()) + ttl
     username = f"{timestamp}:{current_user.phone}"
-    
-    # Simple HMAC simulation for demo
     password = hashlib.sha1(f"{username}:{secret}".encode()).hexdigest()
     
     return {
