@@ -4,6 +4,7 @@ sqlmodel
 psycopg2-binary
 python-jose[cryptography]
 passlib[bcrypt]
+bcrypt
 python-multipart
 pydantic-settings
 asyncpg

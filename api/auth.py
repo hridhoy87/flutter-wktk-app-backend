@@ -11,17 +11,13 @@ SECRET_KEY = os.getenv("SECRET_KEY", "super-secret-key-for-walkie-talkie")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7 Days
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", truncate_error=False)
 
 def get_password_hash(password):
-    # Truncate password to 72 characters to satisfy bcrypt limitation
-    password_bytes = password.encode('utf-8')[:72]
-    return pwd_context.hash(password_bytes.decode('utf-8'))
+    return pwd_context.hash(password)
 
 def verify_password(plain_password, hashed_password):
-    # Ensure plain_password is also truncated for verification
-    password_bytes = plain_password.encode('utf-8')[:72]
-    return pwd_context.verify(password_bytes.decode('utf-8'), hashed_password)
+    return pwd_context.verify(plain_password, hashed_password)
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
