@@ -9,6 +9,7 @@ class UserBase(SQLModel):
     is_admin: bool = Field(default=False)
 
 class User(UserBase, table=True):
+    __tablename__ = "app_user"
     id: Optional[int] = Field(default=None, primary_key=True)
     password_hash: str
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -27,8 +28,9 @@ class ChannelBase(SQLModel):
     name: str
 
 class Channel(ChannelBase, table=True):
+    __tablename__ = "app_channel"
     id: Optional[int] = Field(default=None, primary_key=True)
-    created_by: int = Field(foreign_key="user.id")
+    created_by: int = Field(foreign_key="app_user.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     creator: User = Relationship(back_populates="created_channels")

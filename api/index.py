@@ -64,14 +64,23 @@ def health_check():
 
 @app.post("/login", response_model=Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), session: Session = Depends(get_session)):
-    user = session.exec(select(User).where(User.phone == form_data.username)).first()
-    if not user or not verify_password(form_data.password, user.password_hash):
-        raise HTTPException(status_code=400, detail="Incorrect phone or password")
-    if not user.is_approved:
-        raise HTTPException(status_code=403, detail="User not approved by admin")
-    
-    access_token = create_access_token(data={"sub": user.phone})
-    return {"access_token": access_token, "token_type": "bearer"}
+    """
+    Login using Form Data (x-www-form-urlencoded).
+    Postman: Use 'Body' -> 'x-www-form-urlencoded' with 'username' and 'password' keys.
+    """
+    try:
+        user = session.exec(select(User).where(User.phone == form_data.username)).first()
+        if not user or not verify_password(form_data.password, user.password_hash):
+            raise HTTPException(status_code=400, detail="Incorrect phone or password")
+        if not user.is_approved:
+            raise HTTPException(status_code=403, detail="User not approved by admin")
+        
+        access_token = create_access_token(data={"sub": user.phone})
+        return {"access_token": access_token, "token_type": "bearer"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/home", response_model=UserRead)
 def get_home_data(current_user: User = Depends(get_current_user)):
@@ -82,22 +91,27 @@ def get_home_data(current_user: User = Depends(get_current_user)):
 
 @app.post("/register", response_model=UserRead)
 def register(user_in: UserCreate, session: Session = Depends(get_session)):
-    db_user = session.exec(select(User).where(User.phone == user_in.phone)).first()
-    if db_user:
-        raise HTTPException(status_code=400, detail="Phone already registered")
-    
-    hashed_pw = get_password_hash(user_in.password)
-    new_user = User(
-        phone=user_in.phone,
-        legal_name=user_in.legal_name,
-        password_hash=hashed_pw,
-        is_approved=False,
-        is_admin=False
-    )
-    session.add(new_user)
-    session.commit()
-    session.refresh(new_user)
-    return new_user
+    try:
+        db_user = session.exec(select(User).where(User.phone == user_in.phone)).first()
+        if db_user:
+            raise HTTPException(status_code=400, detail="Phone already registered")
+        
+        hashed_pw = get_password_hash(user_in.password)
+        new_user = User(
+            phone=user_in.phone,
+            legal_name=user_in.legal_name,
+            password_hash=hashed_pw,
+            is_approved=False,
+            is_admin=False
+        )
+        session.add(new_user)
+        session.commit()
+        session.refresh(new_user)
+        return new_user
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # --- Admin Routes ---
 
