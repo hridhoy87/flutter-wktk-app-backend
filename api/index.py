@@ -153,5 +153,9 @@ def get_turn_credentials(current_user: User = Depends(get_current_user)):
         "username": username,
         "password": password,
         "ttl": ttl,
-        "uris": ["turn:my-turn-server.com:3478", "stun:my-turn-server.com:3478"]
+        "uris": [
+            "stun:stun1.l.google.com:19302",
+            "stun:stun2.l.google.com:19302",
+            # "turn:your-turn-server.com:3478" # TODO: Configure real TURN server
+        ]
     }
