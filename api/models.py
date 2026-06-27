@@ -41,3 +41,7 @@ class Token(SQLModel):
 
 class TokenData(SQLModel):
     phone: Optional[str] = None
+
+class LoginRequest(SQLModel):
+    phone: str
+    password: str

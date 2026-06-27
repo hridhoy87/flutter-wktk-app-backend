@@ -8,7 +8,7 @@ import time
 import os
 
 from .database import get_session, init_db
-from .models import User, UserCreate, UserRead, Token, TokenData, Channel
+from .models import User, UserCreate, UserRead, Token, TokenData, Channel, LoginRequest
 from .auth import verify_password, get_password_hash, create_access_token, SECRET_KEY, ALGORITHM
 from jose import JWTError, jwt
 
@@ -63,14 +63,14 @@ def health_check():
     return {"status": "online", "message": "WalkieTalkie API is running", "version": "1.1"}
 
 @app.post("/login", response_model=Token)
-def login(form_data: OAuth2PasswordRequestForm = Depends(), session: Session = Depends(get_session)):
+def login(login_data: LoginRequest, session: Session = Depends(get_session)):
     """
-    Login using Form Data (x-www-form-urlencoded).
-    Postman: Use 'Body' -> 'x-www-form-urlencoded' with 'username' and 'password' keys.
+    Login using JSON data.
+    Body: {"phone": "...", "password": "..."}
     """
     try:
-        user = session.exec(select(User).where(User.phone == form_data.username)).first()
-        if not user or not verify_password(form_data.password, user.password_hash):
+        user = session.exec(select(User).where(User.phone == login_data.phone)).first()
+        if not user or not verify_password(login_data.password, user.password_hash):
             raise HTTPException(status_code=400, detail="Incorrect phone or password")
         if not user.is_approved:
             raise HTTPException(status_code=403, detail="User not approved by admin")
