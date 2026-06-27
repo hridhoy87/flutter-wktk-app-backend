@@ -23,15 +23,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
 @app.on_event("startup")
 def on_startup():
     init_db()
 
-@app.get("/")
-def read_root():
-    return {"status": "online", "message": "WalkieTalkie API is running"}
+# --- Helpers & Dependencies ---
 
 async def get_current_user(token: str = Depends(oauth2_scheme), session: Session = Depends(get_session)):
     credentials_exception = HTTPException(
@@ -47,6 +45,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme), session: Session
         token_data = TokenData(phone=phone)
     except JWTError:
         raise credentials_exception
+    
     user = session.exec(select(User).where(User.phone == token_data.phone)).first()
     if user is None:
         raise credentials_exception
@@ -55,6 +54,30 @@ async def get_current_user(token: str = Depends(oauth2_scheme), session: Session
 async def get_current_admin(current_user: User = Depends(get_current_user)):
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Not an admin")
+    return current_user
+
+# --- Routes ---
+
+@app.get("/")
+def health_check():
+    return {"status": "online", "message": "WalkieTalkie API is running", "version": "1.1"}
+
+@app.post("/login", response_model=Token)
+def login(form_data: OAuth2PasswordRequestForm = Depends(), session: Session = Depends(get_session)):
+    user = session.exec(select(User).where(User.phone == form_data.username)).first()
+    if not user or not verify_password(form_data.password, user.password_hash):
+        raise HTTPException(status_code=400, detail="Incorrect phone or password")
+    if not user.is_approved:
+        raise HTTPException(status_code=403, detail="User not approved by admin")
+    
+    access_token = create_access_token(data={"sub": user.phone})
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@app.get("/home", response_model=UserRead)
+def get_home_data(current_user: User = Depends(get_current_user)):
+    """
+    Protected route. Returns the current user's profile and state.
+    """
     return current_user
 
 @app.post("/register", response_model=UserRead)
@@ -76,16 +99,7 @@ def register(user_in: UserCreate, session: Session = Depends(get_session)):
     session.refresh(new_user)
     return new_user
 
-@app.post("/token", response_model=Token)
-def login(form_data: OAuth2PasswordRequestForm = Depends(), session: Session = Depends(get_session)):
-    user = session.exec(select(User).where(User.phone == form_data.username)).first()
-    if not user or not verify_password(form_data.password, user.password_hash):
-        raise HTTPException(status_code=400, detail="Incorrect phone or password")
-    if not user.is_approved:
-        raise HTTPException(status_code=403, detail="User not approved by admin")
-    
-    access_token = create_access_token(data={"sub": user.phone})
-    return {"access_token": access_token, "token_type": "bearer"}
+# --- Admin Routes ---
 
 @app.get("/admin/pending-users", response_model=List[UserRead])
 def get_pending_users(admin: User = Depends(get_current_admin), session: Session = Depends(get_session)):
@@ -110,6 +124,8 @@ def reject_user(user_id: int, admin: User = Depends(get_current_admin), session:
     session.delete(user)
     session.commit()
     return {"status": "deleted"}
+
+# --- Utility Routes ---
 
 @app.get("/turn-credentials")
 def get_turn_credentials(current_user: User = Depends(get_current_user)):
