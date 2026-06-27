@@ -111,7 +111,8 @@ def reject_user(user_id: int, admin: User = Depends(get_current_admin), session:
 @app.get("/turn-credentials")
 def get_turn_credentials(current_user: User = Depends(get_current_user)):
     # COTURN secret mechanism: user:timestamp and hmac-sha1(secret, user:timestamp)
-    secret = "my-coturn-shared-secret"
+    import os
+    secret = os.getenv("COTURN_SECRET", "my-coturn-shared-secret")
     ttl = 3600 * 24 # 24 hours
     timestamp = int(time.time()) + ttl
     username = f"{timestamp}:{current_user.phone}"
