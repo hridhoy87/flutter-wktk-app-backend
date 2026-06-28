@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordBearer
+from fastapi.responses import Response, FileResponse
 from sqlmodel import Session, select
 from typing import List
 import hashlib
@@ -25,19 +26,13 @@ app.add_middleware(
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
-@app.on_event("startup")
-def on_startup():
-    init_db()
-    seed_channels()
-
 def seed_channels():
     with Session(engine) as session:
         # Check if Global exists
         global_channel = session.exec(select(Channel).where(Channel.id == 0)).first()
         if not global_channel:
-            # We use a manual ID for simplicity in seeding
             session.add(Channel(id=0, name="Global", is_protected=False))
-        
+
         # Check for 6 groups
         for i in range(1, 7):
             group = session.exec(select(Channel).where(Channel.id == i)).first()
@@ -61,7 +56,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme), session: Session
         token_data = TokenData(phone=phone)
     except JWTError:
         raise credentials_exception
-    
+
     user = session.exec(select(User).where(User.phone == token_data.phone)).first()
     if user is None:
         raise credentials_exception
@@ -78,6 +73,38 @@ async def get_current_admin(current_user: User = Depends(get_current_user)):
 def health_check():
     return {"status": "online", "message": "WalkieTalkie API is running", "version": "1.1"}
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    """
+    Serves the physical favicon.ico file from the api/static/ directory.
+    Includes a fallback to 204 No Content just in case the file isn't bundled by Vercel.
+    """
+    # Dynamically locate the api/ directory where index.py lives
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # Target the api/static/favicon.ico file
+    favicon_path = os.path.join(base_dir, "static", "favicon.ico")
+
+    # Serve the file if it exists, otherwise fallback safely
+    if os.path.exists(favicon_path):
+        return FileResponse(favicon_path)
+    return Response(status_code=204)
+
+
+@app.get("/setup-db", include_in_schema=False)
+def manual_db_setup():
+    """
+    Run this endpoint manually via your browser or Postman ONE TIME
+    to securely initialize database tables and seed your default channels.
+    """
+    try:
+        init_db()
+        seed_channels()
+        return {"status": "success", "message": "Database tables initialized and default channels seeded successfully."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database Setup Failure: {str(e)}")
+
+
 @app.post("/login", response_model=Token)
 def login(login_data: LoginRequest, session: Session = Depends(get_session)):
     """
@@ -90,7 +117,7 @@ def login(login_data: LoginRequest, session: Session = Depends(get_session)):
             raise HTTPException(status_code=400, detail="Incorrect phone or password")
         if not user.is_approved:
             raise HTTPException(status_code=403, detail="User not approved by admin")
-        
+
         access_token = create_access_token(data={"sub": user.phone})
         return {"access_token": access_token, "token_type": "bearer"}
     except HTTPException:
@@ -125,9 +152,9 @@ def get_channels(current_user: User = Depends(get_current_user), session: Sessio
 
 @app.post("/channels/temp", response_model=ChannelRead)
 def create_temp_channel(
-    channel_in: ChannelCreate,
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_session)
+        channel_in: ChannelCreate,
+        current_user: User = Depends(get_current_user),
+        session: Session = Depends(get_session)
 ):
     # Ensure admin is in allowed_user_ids if not already
     allowed = channel_in.allowed_user_ids or ""
@@ -149,9 +176,9 @@ def create_temp_channel(
 
 @app.post("/channels/verify")
 def verify_channel_password(
-    data: ChannelVerify, 
-    current_user: User = Depends(get_current_user), 
-    session: Session = Depends(get_session)
+        data: ChannelVerify,
+        current_user: User = Depends(get_current_user),
+        session: Session = Depends(get_session)
 ):
     channel = session.get(Channel, data.channel_id)
     if not channel:
@@ -166,15 +193,15 @@ def verify_channel_password(
 
 @app.patch("/channels/{channel_id}/password")
 def update_channel_password(
-    channel_id: int,
-    data: ChannelPasswordUpdate,
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_session)
+        channel_id: int,
+        data: ChannelPasswordUpdate,
+        current_user: User = Depends(get_current_user),
+        session: Session = Depends(get_session)
 ):
     channel = session.get(Channel, channel_id)
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
-    
+
     if channel.admin_id is not None and channel.admin_id != current_user.id and not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Not the channel admin")
 
@@ -186,15 +213,15 @@ def update_channel_password(
 
 @app.patch("/users/me", response_model=UserRead)
 def update_user_me(
-    user_update: UserUpdate,
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_session)
+        user_update: UserUpdate,
+        current_user: User = Depends(get_current_user),
+        session: Session = Depends(get_session)
 ):
     if user_update.legal_name is not None:
         current_user.legal_name = user_update.legal_name
     if user_update.password is not None:
         current_user.password_hash = get_password_hash(user_update.password)
-    
+
     session.add(current_user)
     session.commit()
     session.refresh(current_user)
@@ -202,8 +229,8 @@ def update_user_me(
 
 @app.get("/users/online", response_model=List[UserRead])
 def get_online_users(
-    session: Session = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+        session: Session = Depends(get_session),
+        current_user: User = Depends(get_current_user)
 ):
     users = session.exec(select(User).where(User.is_approved == True)).all()
     return users
@@ -214,7 +241,7 @@ def register(user_in: UserCreate, session: Session = Depends(get_session)):
         db_user = session.exec(select(User).where(User.phone == user_in.phone)).first()
         if db_user:
             raise HTTPException(status_code=400, detail="Phone already registered")
-        
+
         hashed_pw = get_password_hash(user_in.password)
         new_user = User(
             phone=user_in.phone,
@@ -263,11 +290,11 @@ def reject_user(user_id: int, admin: User = Depends(get_current_admin), session:
 @app.get("/turn-credentials")
 def get_turn_credentials(current_user: User = Depends(get_current_user)):
     secret = os.getenv("COTURN_SECRET", "my-coturn-shared-secret")
-    ttl = 3600 * 24 
+    ttl = 3600 * 24
     timestamp = int(time.time()) + ttl
     username = f"{timestamp}:{current_user.phone}"
     password = hashlib.sha1(f"{username}:{secret}".encode()).hexdigest()
-    
+
     return {
         "username": username,
         "password": password,
