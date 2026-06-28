@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.responses import Response, FileResponse
 from sqlmodel import Session, select, text
+from datetime import datetime, timedelta
 from typing import List
 import hashlib
 import time
@@ -28,9 +29,19 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
 @app.on_event("startup")
 def on_startup():
-    # Only initialize tables here. This is very fast and prevents login/register errors.
-    # We defer the slower seed_channels() to lazy initialization below.
+    # Initialize tables
     init_db()
+    
+    # Safety cleanup for any temporary channels abandoned more than 12h ago
+    with Session(engine) as session:
+        threshold = datetime.utcnow() - timedelta(hours=12)
+        stale = session.exec(select(Channel).where(
+            Channel.is_temporary == True,
+            Channel.created_at < threshold
+        )).all()
+        for ch in stale:
+            session.delete(ch)
+        session.commit()
 
 def seed_channels():
     with Session(engine) as session:
@@ -148,6 +159,13 @@ def get_channels(current_user: User = Depends(get_current_user), session: Sessio
         seed_channels()
         all_channels = session.exec(select(Channel)).all()
 
+    # Update activity for temporary channels being viewed
+    for c in all_channels:
+        if c.is_temporary:
+            c.created_at = datetime.utcnow() # Reuse created_at as activity or add last_activity
+            session.add(c)
+    session.commit()
+
     filtered = []
     for c in all_channels:
         if not c.is_temporary:
@@ -231,6 +249,23 @@ def update_channel_password(
     session.commit()
     return {"status": "success", "message": "Channel password updated"}
 
+@app.delete("/channels/{channel_id}")
+def delete_channel(
+    channel_id: int,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    channel = session.get(Channel, channel_id)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    
+    if not channel.is_temporary:
+        raise HTTPException(status_code=400, detail="Cannot delete permanent channels")
+
+    session.delete(channel)
+    session.commit()
+    return {"status": "success", "message": "Channel deleted"}
+
 @app.patch("/users/me", response_model=UserRead)
 def update_user_me(
         user_update: UserUpdate,
@@ -258,13 +293,19 @@ def get_online_users(
 @app.post("/register", response_model=UserRead)
 def register(user_in: UserCreate, session: Session = Depends(get_session)):
     try:
-        db_user = session.exec(select(User).where(User.phone == user_in.phone)).first()
+        # Normalize phone number (keep only digits)
+        normalized_phone = "".join([c for c in user_in.phone if c.isdigit()])
+
+        if not normalized_phone:
+             raise HTTPException(status_code=400, detail="Invalid phone number")
+
+        db_user = session.exec(select(User).where(User.phone == normalized_phone)).first()
         if db_user:
             raise HTTPException(status_code=400, detail="Phone already registered")
 
         hashed_pw = get_password_hash(user_in.password)
         new_user = User(
-            phone=user_in.phone,
+            phone=normalized_phone,
             legal_name=user_in.legal_name,
             password_hash=hashed_pw,
             is_approved=False,
