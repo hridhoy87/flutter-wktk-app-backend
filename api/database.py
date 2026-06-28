@@ -11,8 +11,11 @@ raw_url = os.getenv("DATABASE_URL")
 if raw_url and raw_url.startswith("postgres://"):
     raw_url = raw_url.replace("postgres://", "postgresql://", 1)
 
-# Default fallback (from your previous read)
-DATABASE_URL = raw_url or 'postgresql://neondb_owner:npg_pWiU4JO3NsFS@ep-nameless-forest-aosdmrbj-pooler.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require'
+# Default fallback (removed for security)
+DATABASE_URL = raw_url
+
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL environment variable is not set")
 
 engine = create_engine(
     DATABASE_URL, 

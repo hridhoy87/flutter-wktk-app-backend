@@ -8,7 +8,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-SECRET_KEY = os.getenv("SECRET_KEY", "super-secret-key-for-walkie-talkie")
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    # In production, this will raise an error if not set, preventing insecure defaults
+    if os.getenv("VERCEL") or os.getenv("PRODUCTION"):
+        raise RuntimeError("SECRET_KEY environment variable is not set!")
+    SECRET_KEY = "dev-secret-key-change-me-in-production"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7 Days
 

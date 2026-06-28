@@ -8,6 +8,7 @@ import hashlib
 import time
 import os
 
+from sqlalchemy import text
 from .database import get_session, init_db, engine
 from .models import User, UserCreate, UserRead, Token, TokenData, Channel, LoginRequest, UserUpdate, ChannelRead, ChannelPasswordUpdate, ChannelVerify, ChannelCreate
 from .auth import verify_password, get_password_hash, create_access_token, SECRET_KEY, ALGORITHM
@@ -34,17 +35,31 @@ def on_startup():
 
 def seed_channels():
     with Session(engine) as session:
-        # Check if Global exists
-        global_channel = session.exec(select(Channel).where(Channel.id == 0)).first()
-        if not global_channel:
-            session.add(Channel(id=0, name="Global", is_protected=False))
+        # We use fixed IDs 1-7 for seeded channels to ensure frontend predictability.
+        # Global = 1, Group 1 = 2, ..., Group 6 = 7.
+        has_changes = False
+        
+        # Check Global
+        if not session.get(Channel, 1):
+            session.add(Channel(id=1, name="Global", is_protected=False))
+            has_changes = True
 
         # Check for 6 groups
         for i in range(1, 7):
-            group = session.exec(select(Channel).where(Channel.id == i)).first()
-            if not group:
-                session.add(Channel(id=i, name=f"Group {i}", is_protected=True))
-        session.commit()
+            target_id = i + 1
+            if not session.get(Channel, target_id):
+                session.add(Channel(id=target_id, name=f"Group {i}", is_protected=True))
+                has_changes = True
+        
+        if has_changes:
+            session.commit()
+            # Reset sequence for Postgres to avoid ID collision on next manual creation
+            try:
+                session.exec(text("SELECT setval('app_channel_id_seq', (SELECT MAX(id) FROM app_channel))"))
+                session.commit()
+            except Exception as e:
+                # Fallback for non-postgres or if sequence name is different
+                print(f"Database sequence sync skipped or failed: {e}")
 
 # --- Helpers & Dependencies ---
 
@@ -199,11 +214,20 @@ def update_channel_password(
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
 
-    if channel.admin_id is not None and channel.admin_id != current_user.id and not current_user.is_admin:
+    # Prevent hijacking of public/system channels
+    # If admin_id is None, it's a system channel - only global admins can modify it
+    if channel.admin_id is None:
+        if not current_user.is_admin:
+            raise HTTPException(status_code=403, detail="System channels can only be modified by global admins")
+    elif channel.admin_id != current_user.id and not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Not the channel admin")
 
     channel.password_hash = get_password_hash(data.password)
-    channel.admin_id = current_user.id
+    # If it was a system channel and an admin is setting a password, 
+    # they become the specific admin for this channel's settings
+    if channel.admin_id is None:
+        channel.admin_id = current_user.id
+
     session.add(channel)
     session.commit()
     return {"status": "success", "message": "Channel password updated"}
