@@ -24,6 +24,8 @@ class UserRead(UserBase):
 class ChannelBase(SQLModel):
     name: str
     is_protected: bool = Field(default=False)
+    is_temporary: bool = Field(default=False)
+    allowed_user_ids: Optional[str] = Field(default=None)
 
 class Channel(ChannelBase, table=True):
     __tablename__ = "app_channel"
@@ -33,6 +35,9 @@ class Channel(ChannelBase, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     admin: Optional[User] = Relationship()
+
+class ChannelCreate(ChannelBase):
+    password: Optional[str] = None
 
 class ChannelRead(ChannelBase):
     id: int

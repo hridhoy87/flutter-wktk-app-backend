@@ -8,7 +8,7 @@ import time
 import os
 
 from .database import get_session, init_db, engine
-from .models import User, UserCreate, UserRead, Token, TokenData, Channel, LoginRequest, UserUpdate, ChannelRead, ChannelPasswordUpdate, ChannelVerify
+from .models import User, UserCreate, UserRead, Token, TokenData, Channel, LoginRequest, UserUpdate, ChannelRead, ChannelPasswordUpdate, ChannelVerify, ChannelCreate
 from .auth import verify_password, get_password_hash, create_access_token, SECRET_KEY, ALGORITHM
 from jose import JWTError, jwt
 
@@ -109,7 +109,43 @@ def get_home_data(current_user: User = Depends(get_current_user)):
 
 @app.get("/channels", response_model=List[ChannelRead])
 def get_channels(current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
-    return session.exec(select(Channel)).all()
+    all_channels = session.exec(select(Channel)).all()
+    filtered = []
+    for c in all_channels:
+        if not c.is_temporary:
+            filtered.append(c)
+        else:
+            if c.allowed_user_ids:
+                allowed = c.allowed_user_ids.split(",")
+                if str(current_user.id) in allowed or c.admin_id == current_user.id:
+                    filtered.append(c)
+            elif c.admin_id == current_user.id:
+                filtered.append(c)
+    return filtered
+
+@app.post("/channels/temp", response_model=ChannelRead)
+def create_temp_channel(
+    channel_in: ChannelCreate,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    # Ensure admin is in allowed_user_ids if not already
+    allowed = channel_in.allowed_user_ids or ""
+    if str(current_user.id) not in allowed.split(","):
+        allowed = f"{allowed},{current_user.id}" if allowed else str(current_user.id)
+
+    new_channel = Channel(
+        name=channel_in.name,
+        is_protected=channel_in.is_protected,
+        is_temporary=True,
+        allowed_user_ids=allowed,
+        admin_id=current_user.id,
+        password_hash=get_password_hash(channel_in.password) if channel_in.password else None
+    )
+    session.add(new_channel)
+    session.commit()
+    session.refresh(new_channel)
+    return new_channel
 
 @app.post("/channels/verify")
 def verify_channel_password(
