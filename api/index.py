@@ -2,13 +2,12 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.responses import Response, FileResponse
-from sqlmodel import Session, select
+from sqlmodel import Session, select, text
 from typing import List
 import hashlib
 import time
 import os
 
-from sqlalchemy import text
 from .database import get_session, init_db, engine
 from .models import User, UserCreate, UserRead, Token, TokenData, Channel, LoginRequest, UserUpdate, ChannelRead, ChannelPasswordUpdate, ChannelVerify, ChannelCreate
 from .auth import verify_password, get_password_hash, create_access_token, SECRET_KEY, ALGORITHM
@@ -310,7 +309,11 @@ def reject_user(user_id: int, admin: User = Depends(get_current_admin), session:
 
 @app.get("/turn-credentials")
 def get_turn_credentials(current_user: User = Depends(get_current_user)):
-    secret = os.getenv("COTURN_SECRET", "my-coturn-shared-secret")
+    secret = os.getenv("COTURN_SECRET")
+    if not secret:
+        # Fallback for dev, but in production this should be set
+        secret = "dev-coturn-secret"
+
     ttl = 3600 * 24
     timestamp = int(time.time()) + ttl
     username = f"{timestamp}:{current_user.phone}"
