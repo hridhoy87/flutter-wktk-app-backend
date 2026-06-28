@@ -26,6 +26,12 @@ app.add_middleware(
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
+@app.on_event("startup")
+def on_startup():
+    # Only initialize tables here. This is very fast and prevents login/register errors.
+    # We defer the slower seed_channels() to lazy initialization below.
+    init_db()
+
 def seed_channels():
     with Session(engine) as session:
         # Check if Global exists
@@ -90,21 +96,6 @@ async def favicon():
         return FileResponse(favicon_path)
     return Response(status_code=204)
 
-
-@app.get("/setup-db", include_in_schema=False)
-def manual_db_setup():
-    """
-    Run this endpoint manually via your browser or Postman ONE TIME
-    to securely initialize database tables and seed your default channels.
-    """
-    try:
-        init_db()
-        seed_channels()
-        return {"status": "success", "message": "Database tables initialized and default channels seeded successfully."}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database Setup Failure: {str(e)}")
-
-
 @app.post("/login", response_model=Token)
 def login(login_data: LoginRequest, session: Session = Depends(get_session)):
     """
@@ -137,6 +128,12 @@ def get_home_data(current_user: User = Depends(get_current_user)):
 @app.get("/channels", response_model=List[ChannelRead])
 def get_channels(current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
     all_channels = session.exec(select(Channel)).all()
+
+    # LAZY INITIALIZATION: Automatically seed the default channels if the database is empty
+    if not all_channels:
+        seed_channels()
+        all_channels = session.exec(select(Channel)).all()
+
     filtered = []
     for c in all_channels:
         if not c.is_temporary:
