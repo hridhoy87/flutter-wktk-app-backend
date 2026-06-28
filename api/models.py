@@ -13,9 +13,6 @@ class User(UserBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     password_hash: str
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    
-    # Relationship
-    created_channels: List["Channel"] = Relationship(back_populates="creator")
 
 class UserCreate(UserBase):
     password: str
@@ -26,14 +23,27 @@ class UserRead(UserBase):
 
 class ChannelBase(SQLModel):
     name: str
+    is_protected: bool = Field(default=False)
 
 class Channel(ChannelBase, table=True):
     __tablename__ = "app_channel"
     id: Optional[int] = Field(default=None, primary_key=True)
-    created_by: int = Field(foreign_key="app_user.id")
+    admin_id: Optional[int] = Field(default=None, foreign_key="app_user.id")
+    password_hash: Optional[str] = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
-    creator: User = Relationship(back_populates="created_channels")
+    admin: Optional[User] = Relationship()
+
+class ChannelRead(ChannelBase):
+    id: int
+    admin_id: Optional[int]
+
+class ChannelPasswordUpdate(SQLModel):
+    password: str
+
+class ChannelVerify(SQLModel):
+    channel_id: int
+    password: str
 
 class Token(SQLModel):
     access_token: str
@@ -45,3 +55,7 @@ class TokenData(SQLModel):
 class LoginRequest(SQLModel):
     phone: str
     password: str
+
+class UserUpdate(SQLModel):
+    legal_name: Optional[str] = None
+    password: Optional[str] = None

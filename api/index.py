@@ -7,8 +7,8 @@ import hashlib
 import time
 import os
 
-from .database import get_session, init_db
-from .models import User, UserCreate, UserRead, Token, TokenData, Channel, LoginRequest
+from .database import get_session, init_db, engine
+from .models import User, UserCreate, UserRead, Token, TokenData, Channel, LoginRequest, UserUpdate, ChannelRead, ChannelPasswordUpdate, ChannelVerify
 from .auth import verify_password, get_password_hash, create_access_token, SECRET_KEY, ALGORITHM
 from jose import JWTError, jwt
 
@@ -28,6 +28,22 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 @app.on_event("startup")
 def on_startup():
     init_db()
+    seed_channels()
+
+def seed_channels():
+    with Session(engine) as session:
+        # Check if Global exists
+        global_channel = session.exec(select(Channel).where(Channel.id == 0)).first()
+        if not global_channel:
+            # We use a manual ID for simplicity in seeding
+            session.add(Channel(id=0, name="Global", is_protected=False))
+        
+        # Check for 6 groups
+        for i in range(1, 7):
+            group = session.exec(select(Channel).where(Channel.id == i)).first()
+            if not group:
+                session.add(Channel(id=i, name=f"Group {i}", is_protected=True))
+        session.commit()
 
 # --- Helpers & Dependencies ---
 
@@ -88,6 +104,73 @@ def get_home_data(current_user: User = Depends(get_current_user)):
     Protected route. Returns the current user's profile and state.
     """
     return current_user
+
+# --- Channels ---
+
+@app.get("/channels", response_model=List[ChannelRead])
+def get_channels(current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    return session.exec(select(Channel)).all()
+
+@app.post("/channels/verify")
+def verify_channel_password(
+    data: ChannelVerify, 
+    current_user: User = Depends(get_current_user), 
+    session: Session = Depends(get_session)
+):
+    channel = session.get(Channel, data.channel_id)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    if not channel.is_protected:
+        return {"status": "success"}
+    if not channel.password_hash:
+        raise HTTPException(status_code=400, detail="Channel password not set by admin yet")
+    if not verify_password(data.password, channel.password_hash):
+        raise HTTPException(status_code=401, detail="Incorrect channel password")
+    return {"status": "success"}
+
+@app.patch("/channels/{channel_id}/password")
+def update_channel_password(
+    channel_id: int,
+    data: ChannelPasswordUpdate,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    channel = session.get(Channel, channel_id)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    
+    if channel.admin_id is not None and channel.admin_id != current_user.id and not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Not the channel admin")
+
+    channel.password_hash = get_password_hash(data.password)
+    channel.admin_id = current_user.id
+    session.add(channel)
+    session.commit()
+    return {"status": "success", "message": "Channel password updated"}
+
+@app.patch("/users/me", response_model=UserRead)
+def update_user_me(
+    user_update: UserUpdate,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    if user_update.legal_name is not None:
+        current_user.legal_name = user_update.legal_name
+    if user_update.password is not None:
+        current_user.password_hash = get_password_hash(user_update.password)
+    
+    session.add(current_user)
+    session.commit()
+    session.refresh(current_user)
+    return current_user
+
+@app.get("/users/online", response_model=List[UserRead])
+def get_online_users(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    users = session.exec(select(User).where(User.is_approved == True)).all()
+    return users
 
 @app.post("/register", response_model=UserRead)
 def register(user_in: UserCreate, session: Session = Depends(get_session)):
@@ -156,6 +239,5 @@ def get_turn_credentials(current_user: User = Depends(get_current_user)):
         "uris": [
             "stun:stun1.l.google.com:19302",
             "stun:stun2.l.google.com:19302",
-            # "turn:your-turn-server.com:3478" # TODO: Configure real TURN server
         ]
     }
