@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.security import OAuth2PasswordBearer
-from fastapi.responses import Response, FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import Response, FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from sqlmodel import Session, select, text
 from datetime import datetime, timedelta
 from typing import List, Optional
@@ -441,15 +441,21 @@ def register(user_in: UserCreate, session: Session = Depends(get_session)):
 
 # --- Super Admin Dashboard & APIs ---
 
-@app.get("/api/super-admimn", response_class=HTMLResponse)
 @app.get("/api/super-admin", response_class=HTMLResponse)
-@app.get("/super-admimn", response_class=HTMLResponse)
 @app.get("/super-admin", response_class=HTMLResponse)
 def serve_super_admin_dashboard():
     """
     Serves the modern, high-performance Super Admin Dashboard console.
     """
     return HTMLResponse(content=ADMIN_DASHBOARD_HTML)
+
+@app.get("/api/super-admimn", include_in_schema=False)
+@app.get("/super-admimn", include_in_schema=False)
+def redirect_typo_admin():
+    """
+    Redirects old typo URL to /api/super-admin.
+    """
+    return RedirectResponse(url="/api/super-admin")
 
 @app.get("/admin/stats")
 def get_admin_stats(admin: User = Depends(get_current_admin), session: Session = Depends(get_session)):
