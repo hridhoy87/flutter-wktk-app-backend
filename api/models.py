@@ -65,3 +65,20 @@ class LoginRequest(SQLModel):
 class UserUpdate(SQLModel):
     legal_name: Optional[str] = None
     password: Optional[str] = None
+
+class UserAdminUpdate(SQLModel):
+    legal_name: Optional[str] = None
+    phone: Optional[str] = None
+    password: Optional[str] = None
+    is_approved: Optional[bool] = None
+    is_admin: Optional[bool] = None
+    channel_ids: Optional[List[int]] = None
+
+class ChannelAdminUpdate(SQLModel):
+    name: Optional[str] = None
+    is_protected: Optional[bool] = None
+    password: Optional[str] = None
+    is_temporary: Optional[bool] = None
+    admin_id: Optional[int] = None
+    allowed_user_ids: Optional[str] = None
+
