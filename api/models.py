@@ -16,6 +16,7 @@ class User(UserBase, table=True):
 
 class UserCreate(UserBase):
     password: str
+    channel_ids: Optional[List[int]] = None
 
 class UserRead(UserBase):
     id: int

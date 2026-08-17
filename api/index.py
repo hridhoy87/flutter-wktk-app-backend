@@ -177,6 +177,18 @@ def get_home_data(current_user: User = Depends(get_current_user)):
 
 # --- Channels ---
 
+@app.get("/channels/public", response_model=List[ChannelRead])
+def get_public_channels(session: Session = Depends(get_session)):
+    """
+    Public endpoint for registration dropdown to display available subscription channels.
+    Returns non-temporary channels.
+    """
+    channels = session.exec(select(Channel).where(Channel.is_temporary == False)).all()
+    if not channels:
+        seed_channels()
+        channels = session.exec(select(Channel).where(Channel.is_temporary == False)).all()
+    return channels
+
 @app.get("/channels", response_model=List[ChannelRead])
 def get_channels(current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
     all_channels = session.exec(select(Channel)).all()
@@ -189,22 +201,58 @@ def get_channels(current_user: User = Depends(get_current_user), session: Sessio
     # Update activity for temporary channels being viewed
     for c in all_channels:
         if c.is_temporary:
-            c.created_at = datetime.utcnow() # Reuse created_at as activity or add last_activity
+            c.created_at = datetime.utcnow()
             session.add(c)
     session.commit()
 
+    # If admin, return ALL channels
+    if current_user.is_admin:
+        return all_channels
+
     filtered = []
     for c in all_channels:
-        if not c.is_temporary:
-            filtered.append(c)
-        else:
+        if c.is_temporary:
             if c.allowed_user_ids:
-                allowed = [uid.strip() for uid in c.allowed_user_ids.split(",")]
+                allowed = [uid.strip() for uid in c.allowed_user_ids.split(",") if uid.strip()]
                 if str(current_user.id) in allowed or current_user.phone in allowed or c.admin_id == current_user.id:
                     filtered.append(c)
             elif c.admin_id == current_user.id:
                 filtered.append(c)
+        else:
+            if c.allowed_user_ids:
+                allowed = [uid.strip() for uid in c.allowed_user_ids.split(",") if uid.strip()]
+                if str(current_user.id) in allowed or current_user.phone in allowed or c.admin_id == current_user.id:
+                    filtered.append(c)
+            else:
+                # Open public channel with no restrictions
+                filtered.append(c)
     return filtered
+
+@app.get("/channels/{channel_id}/users", response_model=List[UserRead])
+def get_channel_users(
+    channel_id: int,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    channel = session.get(Channel, channel_id)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+
+    all_approved = session.exec(select(User).where(User.is_approved == True)).all()
+    if current_user.is_admin:
+        return all_approved
+
+    if channel.allowed_user_ids:
+        allowed = [uid.strip() for uid in channel.allowed_user_ids.split(",") if uid.strip()]
+        if str(current_user.id) not in allowed and current_user.phone not in allowed and channel.admin_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Not entitled to view this channel")
+        
+        peer_ids = set(allowed)
+        if channel.admin_id:
+            peer_ids.add(str(channel.admin_id))
+        return [u for u in all_approved if str(u.id) in peer_ids or u.phone in peer_ids]
+    else:
+        return all_approved
 
 @app.post("/channels/temp", response_model=ChannelRead)
 def create_temp_channel(
@@ -317,8 +365,38 @@ def get_online_users(
         session: Session = Depends(get_session),
         current_user: User = Depends(get_current_user)
 ):
-    users = session.exec(select(User).where(User.is_approved == True)).all()
-    return users
+    all_approved = session.exec(select(User).where(User.is_approved == True)).all()
+    if current_user.is_admin:
+        return all_approved
+
+    # Regular user: Collect all members across all channels this user is entitled to
+    all_channels = session.exec(select(Channel)).all()
+    user_entitled_channels = []
+
+    for c in all_channels:
+        if c.allowed_user_ids:
+            allowed = [uid.strip() for uid in c.allowed_user_ids.split(",") if uid.strip()]
+            if str(current_user.id) in allowed or current_user.phone in allowed or c.admin_id == current_user.id:
+                user_entitled_channels.append(c)
+        elif not c.is_temporary:
+            # If user is in an open/public channel with no restrictions (e.g. Global), all approved users are visible
+            return all_approved
+
+    # Collect all peer user IDs / phones across the user's entitled channels
+    entitled_peer_ids = {str(current_user.id), current_user.phone}
+    for c in user_entitled_channels:
+        if c.admin_id:
+            entitled_peer_ids.add(str(c.admin_id))
+        if c.allowed_user_ids:
+            for uid in c.allowed_user_ids.split(","):
+                if uid.strip():
+                    entitled_peer_ids.add(uid.strip())
+
+    filtered_users = [
+        u for u in all_approved
+        if str(u.id) in entitled_peer_ids or u.phone in entitled_peer_ids
+    ]
+    return filtered_users
 
 @app.post("/register", response_model=UserRead)
 def register(user_in: UserCreate, session: Session = Depends(get_session)):
@@ -329,7 +407,7 @@ def register(user_in: UserCreate, session: Session = Depends(get_session)):
         if not normalized_phone:
              raise HTTPException(status_code=400, detail="Invalid phone number")
 
-        db_user = session.exec(select(User).where(User.phone == normalized_phone)).first()
+        db_user = session.exec(select(User).where((User.phone == normalized_phone) | (User.phone == user_in.phone))).first()
         if db_user:
             raise HTTPException(status_code=400, detail="Phone already registered")
 
@@ -344,6 +422,19 @@ def register(user_in: UserCreate, session: Session = Depends(get_session)):
         session.add(new_user)
         session.commit()
         session.refresh(new_user)
+
+        # If user requested to subscribe to specific channels, add user to allowed_user_ids
+        if user_in.channel_ids:
+            for ch_id in user_in.channel_ids:
+                ch = session.get(Channel, ch_id)
+                if ch:
+                    existing = [uid.strip() for uid in ch.allowed_user_ids.split(",") if uid.strip()] if ch.allowed_user_ids else []
+                    if str(new_user.id) not in existing and normalized_phone not in existing:
+                        existing.append(str(new_user.id))
+                        ch.allowed_user_ids = ",".join(existing)
+                        session.add(ch)
+            session.commit()
+
         return new_user
     except HTTPException:
         raise
