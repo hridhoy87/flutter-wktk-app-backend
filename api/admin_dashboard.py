@@ -1269,7 +1269,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
                     </button>
                     <button type="submit" class="btn-primary" id="userSubmitBtn">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
-                        <span id="userSubmitBtnText">Submit</span>
+                        <span>Submit</span>
                     </button>
                 </div>
             </form>
@@ -1324,7 +1324,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
                     </button>
                     <button type="submit" class="btn-primary" id="channelSubmitBtn">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
-                        <span id="channelSubmitBtnText">Submit</span>
+                        <span>Submit</span>
                     </button>
                 </div>
             </form>
@@ -1367,11 +1367,13 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
         function updateProgressBar(delta) {
             activeRequests += delta;
             const bar = document.getElementById('topProgressBar');
-            if (activeRequests > 0) {
-                bar.classList.add('active');
-            } else {
-                activeRequests = 0;
-                bar.classList.remove('active');
+            if (bar) {
+                if (activeRequests > 0) {
+                    bar.classList.add('active');
+                } else {
+                    activeRequests = 0;
+                    bar.classList.remove('active');
+                }
             }
         }
 
@@ -1517,20 +1519,29 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
                 updateStatsCards(stats);
                 renderUsersTable();
                 renderChannelsTable();
-                document.getElementById('tabUserCount').innerText = usersData.length;
-                document.getElementById('tabChannelCount').innerText = channelsData.length;
+                
+                const userCountEl = document.getElementById('tabUserCount');
+                if (userCountEl) userCountEl.innerText = usersData.length;
+                const channelCountEl = document.getElementById('tabChannelCount');
+                if (channelCountEl) channelCountEl.innerText = channelsData.length;
             } catch (err) {
                 console.error('Failed to load dashboard data:', err);
             }
         }
 
         function updateStatsCards(stats) {
-            document.getElementById('statTotalUsers').innerText = stats.total_users || usersData.length;
-            document.getElementById('statUsersSub').innerText = `${stats.approved_users || 0} Approved · ${stats.pending_users || 0} Pending`;
-            document.getElementById('statTotalChannels').innerText = stats.total_channels || channelsData.length;
-            document.getElementById('statChannelsSub').innerText = `${stats.protected_channels || 0} Protected · ${stats.public_channels || 0} Open`;
-            document.getElementById('statPendingCount').innerText = stats.pending_users || 0;
-            document.getElementById('statAdminCount').innerText = stats.admin_users || 0;
+            const elTotalUsers = document.getElementById('statTotalUsers');
+            if (elTotalUsers) elTotalUsers.innerText = stats.total_users || usersData.length;
+            const elUsersSub = document.getElementById('statUsersSub');
+            if (elUsersSub) elUsersSub.innerText = `${stats.approved_users || 0} Approved · ${stats.pending_users || 0} Pending`;
+            const elTotalChannels = document.getElementById('statTotalChannels');
+            if (elTotalChannels) elTotalChannels.innerText = stats.total_channels || channelsData.length;
+            const elChannelsSub = document.getElementById('statChannelsSub');
+            if (elChannelsSub) elChannelsSub.innerText = `${stats.protected_channels || 0} Protected · ${stats.public_channels || 0} Open`;
+            const elPendingCount = document.getElementById('statPendingCount');
+            if (elPendingCount) elPendingCount.innerText = stats.pending_users || 0;
+            const elAdminCount = document.getElementById('statAdminCount');
+            if (elAdminCount) elAdminCount.innerText = stats.admin_users || 0;
         }
 
         // Switch Tabs
@@ -1542,12 +1553,14 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             document.getElementById('panelChannels').classList.toggle('hidden', tab !== 'channels');
             
             const btnPrimary = document.getElementById('btnPrimaryAction');
-            if (tab === 'users') {
-                btnPrimary.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg> <span>Add Agent</span>';
-                btnPrimary.onclick = openCreateUserModal;
-            } else {
-                btnPrimary.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg> <span>Create Channel</span>';
-                btnPrimary.onclick = openCreateChannelModal;
+            if (btnPrimary) {
+                if (tab === 'users') {
+                    btnPrimary.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg> <span>Add Agent</span>';
+                    btnPrimary.onclick = openCreateUserModal;
+                } else {
+                    btnPrimary.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg> <span>Create Channel</span>';
+                    btnPrimary.onclick = openCreateChannelModal;
+                }
             }
             handleSearch();
         }
@@ -1560,9 +1573,11 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
 
         // Render Users Table
         function renderUsersTable() {
-            const query = document.getElementById('searchInput').value.toLowerCase().trim();
+            const searchInput = document.getElementById('searchInput');
+            const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
             const statusFilter = document.getElementById('userFilterStatus').value;
             const tbody = document.getElementById('usersTableBody');
+            if (!tbody) return;
 
             let filtered = usersData.filter(u => {
                 const matchQuery = (u.legal_name || '').toLowerCase().includes(query) ||
@@ -1637,9 +1652,11 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
 
         // Render Channels Table
         function renderChannelsTable() {
-            const query = document.getElementById('searchInput').value.toLowerCase().trim();
+            const searchInput = document.getElementById('searchInput');
+            const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
             const typeFilter = document.getElementById('channelFilterType').value;
             const tbody = document.getElementById('channelsTableBody');
+            if (!tbody) return;
 
             let filtered = channelsData.filter(c => {
                 const matchQuery = (c.name || '').toLowerCase().includes(query) || String(c.id).includes(query);
@@ -1667,7 +1684,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
 
             tbody.innerHTML = filtered.map(c => {
                 const memberCount = c.allowed_user_ids ? c.allowed_user_ids.split(',').filter(x => x.trim()).length : (c.name && c.name.toLowerCase() === 'global' ? 'All (Public)' : 0);
-                const adminUser = usersData.find(u => u.id === c.admin_id);
+                const adminUser = usersData.find(u => String(u.id) === String(c.admin_id));
                 const adminName = adminUser ? `${adminUser.legal_name} (${adminUser.phone})` : (c.admin_id ? `ID #${c.admin_id}` : 'System');
                 const createdStr = c.created_at ? new Date(c.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '--';
 
@@ -1713,7 +1730,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
                     });
                     showToast('Agent approval revoked', 'info');
                 }
-                loadAllData();
+                await loadAllData();
             } catch (err) {
                 if (btn) {
                     btn.disabled = false;
@@ -1733,7 +1750,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             try {
                 await api(`/admin/users/${userId}`, { method: 'DELETE' });
                 showToast(`Agent "${name}" deleted`, 'success');
-                loadAllData();
+                await loadAllData();
             } catch (err) {
                 if (btn) {
                     btn.disabled = false;
@@ -1753,7 +1770,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             try {
                 await api(`/admin/channels/${channelId}`, { method: 'DELETE' });
                 showToast(`Channel "${name}" deleted`, 'success');
-                loadAllData();
+                await loadAllData();
             } catch (err) {
                 if (btn) {
                     btn.disabled = false;
@@ -1764,10 +1781,13 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
 
         // User / Agent Modal (Create & Edit)
         function openCreateUserModal() {
-            document.getElementById('userModalTitle').innerHTML = `
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-                <span>Add New Agent</span>
-            `;
+            const modalTitle = document.getElementById('userModalTitle');
+            if (modalTitle) {
+                modalTitle.innerHTML = `
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+                    <span>Add New Agent</span>
+                `;
+            }
             document.getElementById('userFormId').value = '';
             document.getElementById('userFormLegalName').value = '';
             document.getElementById('userFormPhone').value = '';
@@ -1777,34 +1797,41 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             document.getElementById('userFormApproved').checked = true;
             document.getElementById('userFormAdmin').checked = false;
 
-            document.getElementById('userSubmitBtnText').innerText = 'Submit';
             setButtonLoading(document.getElementById('userSubmitBtn'), false, 'Submit');
-            document.getElementById('userCancelBtn').disabled = false;
+            const cancelBtn = document.getElementById('userCancelBtn');
+            if (cancelBtn) cancelBtn.disabled = false;
 
             renderUserChannelsPicker([]);
             openModal('userModal');
         }
 
         function openEditUserModal(userId) {
-            const user = usersData.find(u => u.id === userId);
-            if (!user) return;
+            const user = usersData.find(u => String(u.id) === String(userId));
+            if (!user) {
+                showToast('User data not found, reloading...', 'error');
+                loadAllData();
+                return;
+            }
 
-            document.getElementById('userModalTitle').innerHTML = `
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
-                <span>Edit Agent: ${escapeHtml(user.legal_name || 'Agent')} (#${user.id})</span>
-            `;
+            const modalTitle = document.getElementById('userModalTitle');
+            if (modalTitle) {
+                modalTitle.innerHTML = `
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                    <span>Edit Agent: ${escapeHtml(user.legal_name || 'Agent')} (#${user.id})</span>
+                `;
+            }
             document.getElementById('userFormId').value = user.id;
             document.getElementById('userFormLegalName').value = user.legal_name || '';
             document.getElementById('userFormPhone').value = user.phone || '';
             document.getElementById('userFormPassword').value = '';
             document.getElementById('userFormPasswordLabel').innerText = 'New Passcode (Leave blank to keep unchanged)';
             document.getElementById('userFormPassword').required = false;
-            document.getElementById('userFormApproved').checked = user.is_approved;
-            document.getElementById('userFormAdmin').checked = user.is_admin;
+            document.getElementById('userFormApproved').checked = !!user.is_approved;
+            document.getElementById('userFormAdmin').checked = !!user.is_admin;
 
-            document.getElementById('userSubmitBtnText').innerText = 'Submit';
             setButtonLoading(document.getElementById('userSubmitBtn'), false, 'Submit');
-            document.getElementById('userCancelBtn').disabled = false;
+            const cancelBtn = document.getElementById('userCancelBtn');
+            if (cancelBtn) cancelBtn.disabled = false;
 
             // Find user's current channel IDs
             const userChannelIds = channelsData.filter(c => {
@@ -1821,6 +1848,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
 
         function renderUserChannelsPicker(selectedIds) {
             const container = document.getElementById('userFormChannelsPicker');
+            if (!container) return;
             if (!channelsData || channelsData.length === 0) {
                 container.innerHTML = '<span style="color: var(--text-muted); font-size: 12px;">No channels registered</span>';
                 return;
@@ -1858,7 +1886,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             if (password) payload.password = password;
 
             setButtonLoading(submitBtn, true, 'Submitting...');
-            cancelBtn.disabled = true;
+            if (cancelBtn) cancelBtn.disabled = true;
 
             try {
                 if (id) {
@@ -1867,8 +1895,6 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
                 } else {
                     if (!password) { 
                         showToast('Password is required for new agents', 'error'); 
-                        setButtonLoading(submitBtn, false, 'Submit');
-                        cancelBtn.disabled = false;
                         return; 
                     }
                     payload.password = password;
@@ -1876,21 +1902,24 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
                     showToast('Agent created successfully', 'success');
                 }
                 closeModal('userModal');
-                loadAllData();
+                await loadAllData();
             } catch (err) {
                 // Error toast handled in api()
             } finally {
                 setButtonLoading(submitBtn, false, 'Submit');
-                cancelBtn.disabled = false;
+                if (cancelBtn) cancelBtn.disabled = false;
             }
         }
 
         // Channel Modal (Create & Edit)
         function openCreateChannelModal() {
-            document.getElementById('channelModalTitle').innerHTML = `
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-                <span>Create Channel</span>
-            `;
+            const modalTitle = document.getElementById('channelModalTitle');
+            if (modalTitle) {
+                modalTitle.innerHTML = `
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+                    <span>Create Channel</span>
+                `;
+            }
             document.getElementById('channelFormId').value = '';
             document.getElementById('channelFormName').value = '';
             document.getElementById('channelFormProtected').checked = false;
@@ -1901,25 +1930,32 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             populateChannelAdminSelect(null);
             renderChannelUsersPicker([]);
 
-            document.getElementById('channelSubmitBtnText').innerText = 'Submit';
             setButtonLoading(document.getElementById('channelSubmitBtn'), false, 'Submit');
-            document.getElementById('channelCancelBtn').disabled = false;
+            const cancelBtn = document.getElementById('channelCancelBtn');
+            if (cancelBtn) cancelBtn.disabled = false;
 
             openModal('channelModal');
         }
 
         function openEditChannelModal(channelId) {
-            const channel = channelsData.find(c => c.id === channelId);
-            if (!channel) return;
+            const channel = channelsData.find(c => String(c.id) === String(channelId));
+            if (!channel) {
+                showToast('Channel data not found, reloading...', 'error');
+                loadAllData();
+                return;
+            }
 
-            document.getElementById('channelModalTitle').innerHTML = `
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
-                <span>Edit Channel: ${escapeHtml(channel.name)} (#${channel.id})</span>
-            `;
+            const modalTitle = document.getElementById('channelModalTitle');
+            if (modalTitle) {
+                modalTitle.innerHTML = `
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                    <span>Edit Channel: ${escapeHtml(channel.name)} (#${channel.id})</span>
+                `;
+            }
             document.getElementById('channelFormId').value = channel.id;
             document.getElementById('channelFormName').value = channel.name || '';
-            document.getElementById('channelFormProtected').checked = channel.is_protected;
-            document.getElementById('channelFormTemporary').checked = channel.is_temporary;
+            document.getElementById('channelFormProtected').checked = !!channel.is_protected;
+            document.getElementById('channelFormTemporary').checked = !!channel.is_temporary;
             document.getElementById('channelFormPassword').value = '';
             toggleChannelPasswordInput();
 
@@ -1928,9 +1964,9 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             const allowedIds = channel.allowed_user_ids ? channel.allowed_user_ids.split(',').map(s => s.trim()) : [];
             renderChannelUsersPicker(allowedIds);
 
-            document.getElementById('channelSubmitBtnText').innerText = 'Submit';
             setButtonLoading(document.getElementById('channelSubmitBtn'), false, 'Submit');
-            document.getElementById('channelCancelBtn').disabled = false;
+            const cancelBtn = document.getElementById('channelCancelBtn');
+            if (cancelBtn) cancelBtn.disabled = false;
 
             openModal('channelModal');
         }
@@ -1942,9 +1978,10 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
 
         function populateChannelAdminSelect(selectedAdminId) {
             const select = document.getElementById('channelFormAdminId');
+            if (!select) return;
             select.innerHTML = '<option value="">No Specific Admin (System Channel)</option>' +
                 usersData.map(u => `
-                    <option value="${u.id}" ${u.id === selectedAdminId ? 'selected' : ''}>
+                    <option value="${u.id}" ${String(u.id) === String(selectedAdminId) ? 'selected' : ''}>
                         ${escapeHtml(u.legal_name)} (${u.phone}) ${u.is_admin ? '★ Admin' : ''}
                     </option>
                 `).join('');
@@ -1952,6 +1989,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
 
         function renderChannelUsersPicker(selectedAllowedIds) {
             const container = document.getElementById('channelFormUsersPicker');
+            if (!container) return;
             if (!usersData || usersData.length === 0) {
                 container.innerHTML = '<span style="color: var(--text-muted); font-size: 12px;">No agents found</span>';
                 return;
@@ -1993,7 +2031,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             if (password) payload.password = password;
 
             setButtonLoading(submitBtn, true, 'Submitting...');
-            cancelBtn.disabled = true;
+            if (cancelBtn) cancelBtn.disabled = true;
 
             try {
                 if (id) {
@@ -2004,12 +2042,12 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
                     showToast('Channel created successfully', 'success');
                 }
                 closeModal('channelModal');
-                loadAllData();
+                await loadAllData();
             } catch (err) {
                 // Error handled in api()
             } finally {
                 setButtonLoading(submitBtn, false, 'Submit');
-                cancelBtn.disabled = false;
+                if (cancelBtn) cancelBtn.disabled = false;
             }
         }
 
@@ -2030,16 +2068,16 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
             }
         }
 
-        // Button Loading State Helper
-        function setButtonLoading(btn, isLoading, text) {
+        // Button Loading State Helper (Safely preserves structure)
+        function setButtonLoading(btn, isLoading, text = 'Submit') {
             if (!btn) return;
             btn.disabled = isLoading;
             if (isLoading) {
-                btn.innerHTML = `<span class="spinner spinner-primary"></span> <span>${text || 'Loading...'}</span>`;
+                btn.innerHTML = `<span class="spinner spinner-primary"></span> <span>${escapeHtml(text)}</span>`;
             } else {
                 btn.innerHTML = `
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
-                    <span>${text || 'Submit'}</span>
+                    <span>${escapeHtml(text)}</span>
                 `;
             }
         }
@@ -2047,6 +2085,7 @@ ADMIN_DASHBOARD_HTML = """<!DOCTYPE html>
         // Toast Feedback Helper
         function showToast(message, type = 'info') {
             const container = document.getElementById('toastContainer');
+            if (!container) return;
             const toast = document.createElement('div');
             toast.className = `toast ${type}`;
             
