@@ -388,27 +388,4 @@ def get_turn_credentials(current_user: User = Depends(get_current_user)):
             "stun:stun1.l.google.com:19302",
             "stun:stun2.l.google.com:19302",
         ]
-    }
-
-class VercelASGI:
-    """
-    Pure ASGI middleware wrapping FastAPI to ensure complete compatibility
-    with Vercel's serverless Python routing, stripping proxy prefixes (/api/index, /api)
-    before ASGI route resolution occurs.
-    """
-    def __init__(self, asgi_app):
-        self.asgi_app = asgi_app
-
-    async def __call__(self, scope, receive, send):
-        if scope.get("type") == "http":
-            path = scope.get("path", "")
-            if path.startswith("/api/index"):
-                scope["path"] = path[len("/api/index"):] or "/"
-            elif path.startswith("/api/") and path != "/api/":
-                scope["path"] = path[len("/api"):] or "/"
-            elif path == "/api":
-                scope["path"] = "/"
-        await self.asgi_app(scope, receive, send)
-
-# Wrap FastAPI app with ASGI compatibility layer for Vercel
-app = VercelASGI(app)
+    }
