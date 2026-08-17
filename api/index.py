@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.responses import Response, FileResponse
 from sqlmodel import Session, select, text
@@ -15,6 +16,15 @@ from .auth import verify_password, get_password_hash, create_access_token, SECRE
 from jose import JWTError, jwt
 
 app = FastAPI(title="WalkieTalkie Backend")
+
+class VercelQueryPathMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        path_param = request.query_params.get("path")
+        if path_param and request.url.path in ("/api/index", "/api", "/"):
+            request.scope["path"] = "/" + path_param.lstrip("/")
+        return await call_next(request)
+
+app.add_middleware(VercelQueryPathMiddleware)
 
 # CORS Configuration
 app.add_middleware(
@@ -103,11 +113,8 @@ async def get_current_admin(current_user: User = Depends(get_current_user)):
 @app.get("/")
 @app.get("/api")
 @app.get("/api/index")
-def health_check(request: Request):
-    matched = request.headers.get("x-matched-path") or request.headers.get("x-vercel-matched-path")
-    if matched and matched.rstrip("/").endswith("/time"):
-        return get_server_time()
-    return {"status": "online", "message": "WalkieTalkie API is running", "version": "1.1", "path": request.url.path, "matched": matched}
+def health_check():
+    return {"status": "online", "message": "WalkieTalkie API is running", "version": "1.1"}
 
 @app.get("/time")
 @app.get("/api/time")
