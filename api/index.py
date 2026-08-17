@@ -1,5 +1,6 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.responses import Response, FileResponse
 from sqlmodel import Session, select, text
@@ -15,6 +16,22 @@ from .auth import verify_password, get_password_hash, create_access_token, SECRE
 from jose import JWTError, jwt
 
 app = FastAPI(title="WalkieTalkie Backend")
+
+# Vercel Path Normalization Middleware
+class VercelPathRewriteMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if path.startswith("/api/index"):
+            normalized = path[len("/api/index"):] or "/"
+            request.scope["path"] = normalized
+        elif path.startswith("/api/") and path != "/api/":
+            normalized = path[len("/api"):] or "/"
+            request.scope["path"] = normalized
+        elif path == "/api":
+            request.scope["path"] = "/"
+        return await call_next(request)
+
+app.add_middleware(VercelPathRewriteMiddleware)
 
 # CORS Configuration
 app.add_middleware(
@@ -101,10 +118,12 @@ async def get_current_admin(current_user: User = Depends(get_current_user)):
 # --- Routes ---
 
 @app.get("/")
+@app.get("/api")
 def health_check():
     return {"status": "online", "message": "WalkieTalkie API is running", "version": "1.1"}
 
 @app.get("/time")
+@app.get("/api/time")
 def get_server_time():
     """
     High-precision server timestamp in UTC milliseconds.
