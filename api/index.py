@@ -175,6 +175,23 @@ def get_home_data(current_user: User = Depends(get_current_user)):
     """
     return current_user
 
+def is_user_entitled_to_channel(channel: Channel, user: User) -> bool:
+    if user.is_admin:
+        return True
+    if channel.admin_id == user.id:
+        return True
+    if channel.allowed_user_ids:
+        allowed = [uid.strip() for uid in channel.allowed_user_ids.split(",") if uid.strip()]
+        return str(user.id) in allowed or user.phone in allowed
+    # When allowed_user_ids is None/empty:
+    # Protected or temporary channels require explicit membership or admin
+    if channel.is_protected or channel.is_temporary:
+        return False
+    # Only completely open Global channel allows all users when allowed_user_ids is not set
+    if channel.name and channel.name.lower() == "global":
+        return True
+    return False
+
 # --- Channels ---
 
 @app.get("/channels/public", response_model=List[ChannelRead])
@@ -205,28 +222,10 @@ def get_channels(current_user: User = Depends(get_current_user), session: Sessio
             session.add(c)
     session.commit()
 
-    # If admin, return ALL channels
     if current_user.is_admin:
         return all_channels
 
-    filtered = []
-    for c in all_channels:
-        if c.is_temporary:
-            if c.allowed_user_ids:
-                allowed = [uid.strip() for uid in c.allowed_user_ids.split(",") if uid.strip()]
-                if str(current_user.id) in allowed or current_user.phone in allowed or c.admin_id == current_user.id:
-                    filtered.append(c)
-            elif c.admin_id == current_user.id:
-                filtered.append(c)
-        else:
-            if c.allowed_user_ids:
-                allowed = [uid.strip() for uid in c.allowed_user_ids.split(",") if uid.strip()]
-                if str(current_user.id) in allowed or current_user.phone in allowed or c.admin_id == current_user.id:
-                    filtered.append(c)
-            else:
-                # Open public channel with no restrictions
-                filtered.append(c)
-    return filtered
+    return [c for c in all_channels if is_user_entitled_to_channel(c, current_user)]
 
 @app.get("/channels/{channel_id}/users", response_model=List[UserRead])
 def get_channel_users(
@@ -242,11 +241,11 @@ def get_channel_users(
     if current_user.is_admin:
         return all_approved
 
+    if not is_user_entitled_to_channel(channel, current_user):
+        raise HTTPException(status_code=403, detail="Not entitled to view this channel")
+
     if channel.allowed_user_ids:
         allowed = [uid.strip() for uid in channel.allowed_user_ids.split(",") if uid.strip()]
-        if str(current_user.id) not in allowed and current_user.phone not in allowed and channel.admin_id != current_user.id:
-            raise HTTPException(status_code=403, detail="Not entitled to view this channel")
-        
         peer_ids = set(allowed)
         if channel.admin_id:
             peer_ids.add(str(channel.admin_id))
@@ -371,26 +370,24 @@ def get_online_users(
 
     # Regular user: Collect all members across all channels this user is entitled to
     all_channels = session.exec(select(Channel)).all()
-    user_entitled_channels = []
-
-    for c in all_channels:
-        if c.allowed_user_ids:
-            allowed = [uid.strip() for uid in c.allowed_user_ids.split(",") if uid.strip()]
-            if str(current_user.id) in allowed or current_user.phone in allowed or c.admin_id == current_user.id:
-                user_entitled_channels.append(c)
-        elif not c.is_temporary:
-            # If user is in an open/public channel with no restrictions (e.g. Global), all approved users are visible
-            return all_approved
+    my_channels = [c for c in all_channels if is_user_entitled_to_channel(c, current_user)]
 
     # Collect all peer user IDs / phones across the user's entitled channels
     entitled_peer_ids = {str(current_user.id), current_user.phone}
-    for c in user_entitled_channels:
+    has_unrestricted_global = False
+
+    for c in my_channels:
         if c.admin_id:
             entitled_peer_ids.add(str(c.admin_id))
         if c.allowed_user_ids:
             for uid in c.allowed_user_ids.split(","):
                 if uid.strip():
                     entitled_peer_ids.add(uid.strip())
+        elif c.name and c.name.lower() == "global" and not c.is_protected:
+            has_unrestricted_global = True
+
+    if has_unrestricted_global:
+        return all_approved
 
     filtered_users = [
         u for u in all_approved
