@@ -1,6 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.responses import Response, FileResponse
 from sqlmodel import Session, select, text
@@ -16,22 +15,6 @@ from .auth import verify_password, get_password_hash, create_access_token, SECRE
 from jose import JWTError, jwt
 
 app = FastAPI(title="WalkieTalkie Backend")
-
-# Vercel Path Normalization Middleware
-class VercelPathRewriteMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        path = request.url.path
-        if path.startswith("/api/index"):
-            normalized = path[len("/api/index"):] or "/"
-            request.scope["path"] = normalized
-        elif path.startswith("/api/") and path != "/api/":
-            normalized = path[len("/api"):] or "/"
-            request.scope["path"] = normalized
-        elif path == "/api":
-            request.scope["path"] = "/"
-        return await call_next(request)
-
-app.add_middleware(VercelPathRewriteMiddleware)
 
 # CORS Configuration
 app.add_middleware(
@@ -119,11 +102,13 @@ async def get_current_admin(current_user: User = Depends(get_current_user)):
 
 @app.get("/")
 @app.get("/api")
+@app.get("/api/index")
 def health_check():
     return {"status": "online", "message": "WalkieTalkie API is running", "version": "1.1"}
 
 @app.get("/time")
 @app.get("/api/time")
+@app.get("/api/index/time")
 def get_server_time():
     """
     High-precision server timestamp in UTC milliseconds.
@@ -404,3 +389,26 @@ def get_turn_credentials(current_user: User = Depends(get_current_user)):
             "stun:stun2.l.google.com:19302",
         ]
     }
+
+class VercelASGI:
+    """
+    Pure ASGI middleware wrapping FastAPI to ensure complete compatibility
+    with Vercel's serverless Python routing, stripping proxy prefixes (/api/index, /api)
+    before ASGI route resolution occurs.
+    """
+    def __init__(self, asgi_app):
+        self.asgi_app = asgi_app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") == "http":
+            path = scope.get("path", "")
+            if path.startswith("/api/index"):
+                scope["path"] = path[len("/api/index"):] or "/"
+            elif path.startswith("/api/") and path != "/api/":
+                scope["path"] = path[len("/api"):] or "/"
+            elif path == "/api":
+                scope["path"] = "/"
+        await self.asgi_app(scope, receive, send)
+
+# Wrap FastAPI app with ASGI compatibility layer for Vercel
+app = VercelASGI(app)
