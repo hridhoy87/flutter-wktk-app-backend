@@ -11,17 +11,16 @@ raw_url = os.getenv("DATABASE_URL")
 if raw_url and raw_url.startswith("postgres://"):
     raw_url = raw_url.replace("postgres://", "postgresql://", 1)
 
-# Default fallback (removed for security)
-DATABASE_URL = raw_url
-
-if not DATABASE_URL:
-    raise ValueError("DATABASE_URL environment variable is not set")
+# Default fallback for development/testing
+DATABASE_URL = raw_url or "sqlite:///./dev_walkietalkie.db"
 
 engine = create_engine(
     DATABASE_URL, 
     echo=True,
     # Standard SSL config for Neon
-    connect_args={"sslmode": "require"} if "postgresql" in DATABASE_URL else {}
+    connect_args={"sslmode": "require"} if "postgresql" in DATABASE_URL else (
+        {"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
+    )
 )
 
 def init_db():

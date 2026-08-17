@@ -104,6 +104,18 @@ async def get_current_admin(current_user: User = Depends(get_current_user)):
 def health_check():
     return {"status": "online", "message": "WalkieTalkie API is running", "version": "1.1"}
 
+@app.get("/time")
+def get_server_time():
+    """
+    High-precision server timestamp in UTC milliseconds.
+    Used by client devices for network time synchronization and PTT floor arbitration.
+    """
+    now = time.time()
+    return {
+        "server_time_ms": int(now * 1000),
+        "timestamp_iso": datetime.utcnow().isoformat() + "Z"
+    }
+
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
     """
@@ -128,7 +140,8 @@ def login(login_data: LoginRequest, session: Session = Depends(get_session)):
     Body: {"phone": "...", "password": "..."}
     """
     try:
-        user = session.exec(select(User).where(User.phone == login_data.phone)).first()
+        normalized_phone = "".join([c for c in login_data.phone if c.isdigit()])
+        user = session.exec(select(User).where((User.phone == normalized_phone) | (User.phone == login_data.phone))).first()
         if not user or not verify_password(login_data.password, user.password_hash):
             raise HTTPException(status_code=400, detail="Incorrect phone or password")
         if not user.is_approved:
@@ -172,8 +185,8 @@ def get_channels(current_user: User = Depends(get_current_user), session: Sessio
             filtered.append(c)
         else:
             if c.allowed_user_ids:
-                allowed = c.allowed_user_ids.split(",")
-                if str(current_user.id) in allowed or c.admin_id == current_user.id:
+                allowed = [uid.strip() for uid in c.allowed_user_ids.split(",")]
+                if str(current_user.id) in allowed or current_user.phone in allowed or c.admin_id == current_user.id:
                     filtered.append(c)
             elif c.admin_id == current_user.id:
                 filtered.append(c)
@@ -261,6 +274,9 @@ def delete_channel(
     
     if not channel.is_temporary:
         raise HTTPException(status_code=400, detail="Cannot delete permanent channels")
+
+    if channel.admin_id != current_user.id and not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this channel")
 
     session.delete(channel)
     session.commit()
