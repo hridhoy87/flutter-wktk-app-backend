@@ -103,8 +103,11 @@ async def get_current_admin(current_user: User = Depends(get_current_user)):
 @app.get("/")
 @app.get("/api")
 @app.get("/api/index")
-def health_check():
-    return {"status": "online", "message": "WalkieTalkie API is running", "version": "1.1"}
+def health_check(request: Request):
+    matched = request.headers.get("x-matched-path") or request.headers.get("x-vercel-matched-path")
+    if matched and matched.rstrip("/").endswith("/time"):
+        return get_server_time()
+    return {"status": "online", "message": "WalkieTalkie API is running", "version": "1.1", "path": request.url.path, "matched": matched}
 
 @app.get("/time")
 @app.get("/api/time")
